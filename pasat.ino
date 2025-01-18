@@ -1,10 +1,14 @@
 #include <SPI.h>
 #include <SD.h>
 
+#include <DFRobot_ICP10111.h>
+
 #define LOG_FILE "log.txt"
 
 // 0->don't log to serial | 1->log only info & errors | 2->log all
-#define SERIAL_LOG_LEVEL 1
+#define SERIAL_LOG_LEVEL 2
+
+DFRobot_ICP10111 pressureSensor;
 
 void setup() {
 #if SERIAL_LOG_LEVEL > 0
@@ -13,10 +17,15 @@ void setup() {
   while (!Serial);
 #endif
 
+  if (pressureSensor.begin() != 0) {
+    error("Pressure sensor initialization failed.");
+  }
+  pressureSensor.setWorkPattern(pressureSensor.eNormal);
+  info("Pressure sensor initialized.");
+
   // initialize SD card
   if (!SD.begin(SDCARD_SS_PIN)) {
     error("SD card initialization failed.");
-    while (true);
   }
   info("SD card initialized.");
 
@@ -28,7 +37,7 @@ void setup() {
 }
 
 void loop() {
-  log("the end is never");
+  log(String(pressureSensor.getAirPressure()));
 }
 
 
@@ -52,6 +61,9 @@ void error(String s) {
 #if SERIAL_LOG_LEVEL > 0
   Serial.println("ERROR :: " + s);
 #endif
+  
+  // errors should end program for safety
+  while (true);
 }
 
 void info(String s) {
