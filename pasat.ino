@@ -20,21 +20,9 @@ void setup() {
   while (!Serial);
 #endif
 
-  // initialize pressure sensor
-  while (pressureSensor.begin() != 0) {
-    error("Pressure sensor initialization failed.");
-    delay(RETRY_DELAY);
-  }
-  pressureSensor.setWorkPattern(pressureSensor.eNormal);
-  info("Pressure sensor initialized.");
-
-  // initialize pressure sensor
-  uint8_t status;
-  while ((status = tempHumSensor.begin()) != 0) {
-    error("Temperature/humidity sensor initialization failed (status: " + String(status) + ").");
-    delay(RETRY_DELAY);
-  }
-  info("Temperature/humidity sensor initialized.");  
+  // initialize sensors
+  initPressure();
+  initTempHum();
 
   // initialize SD card
   while (!SD.begin(SDCARD_SS_PIN)) {
@@ -60,6 +48,31 @@ void loop() {
     ", " +
     String(tempHumSensor.getHumidity_RH())
   );
+}
+
+
+//--- PRESSURE SENSOR ---//
+
+void initPressure() {
+  while (pressureSensor.begin() != 0) {
+    error("Pressure sensor initialization failed.");
+    delay(RETRY_DELAY);
+  }
+
+  pressureSensor.setWorkPattern(pressureSensor.eNormal);
+  info("Pressure sensor initialized.");
+}
+
+
+//--- TEMPERATURE & HUMIDITY SENSOR ---//
+
+void initTempHum() {
+  uint8_t status;
+  while ((status = tempHumSensor.begin()) != 0) {
+    error("Temperature/humidity sensor initialization failed (status: " + String(status) + ").");
+    delay(RETRY_DELAY);
+  }
+  info("Temperature/humidity sensor initialized.");  
 }
 
 
