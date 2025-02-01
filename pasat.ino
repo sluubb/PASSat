@@ -10,6 +10,8 @@
 // 0->don't log to serial | 1->log only info & errors | 2->log all
 #define SERIAL_LOG_LEVEL 2
 
+int statusPin = 7;
+
 DFRobot_ICP10111 pressureSensor;
 DFRobot_AHT20 tempHumSensor;
 
@@ -19,6 +21,9 @@ void setup() {
   Serial.begin(9600);
   while (!Serial);
 #endif
+
+  // initialize status blinker
+  pinMode(statusPin, OUTPUT);
 
   // initialize sensors
   initPressure();
@@ -95,7 +100,10 @@ void log(String s) {
 }
 
 void error(String s) {
-  // TODO: physically indicate
+  digitalWrite(statusPin, HIGH);
+  delay(100);
+  digitalWrite(statusPin, LOW);
+
 #if SERIAL_LOG_LEVEL > 0
   Serial.print("ERROR :: ");
   Serial.println(s);
