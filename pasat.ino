@@ -10,7 +10,7 @@
 // 0->don't log to serial | 1->log only info & errors | 2->log all
 #define SERIAL_LOG_LEVEL 2
 
-int statusPin = 7;
+int statusPin = LED_BUILTIN;
 
 DFRobot_ICP10111 pressureSensor;
 DFRobot_AHT20 tempHumSensor;
@@ -22,14 +22,72 @@ void setup() {
   while (!Serial);
 #endif
 
-  // initialize status blinker
   pinMode(statusPin, OUTPUT);
 
-  // initialize sensors
   initPressure();
   initTempHum();
+  initSD();  
+}
 
-  // initialize SD card
+void loop() {
+  float pressure;
+  if (readPressure(&pressure)) return;
+
+  float temp, hum;
+  if (readTempHum(&temp, &hum)) return;
+
+  log(
+    String(pressure) +
+    ", " +
+    String(temp) +
+    ", " +
+    String(hum)
+  );
+}
+
+
+//--- PRESSURE SENSOR ---//
+
+void initPressure() {
+  uint8_t status;
+  while ((status = pressureSensor.begin()) != 0) {
+    error("Pressure sensor initialization failed (status: " + String(status) + ").");
+    delay(RETRY_DELAY);
+  }
+
+  pressureSensor.setWorkPattern(pressureSensor.eNormal);
+  info("Pressure sensor initialized.");
+}
+
+bool readPressure(float *p) {
+  *p = pressureSensor.getAirPressure();
+  return false;
+}
+
+
+//--- TEMPERATURE & HUMIDITY SENSOR ---//
+
+void initTempHum() {
+  uint8_t status;
+  while ((status = tempHumSensor.begin()) != 0) {
+    error("Temperature/humidity sensor initialization failed (status: " + String(status) + ").");
+    delay(RETRY_DELAY);
+  }
+
+  info("Temperature/humidity sensor initialized.");  
+}
+
+bool readTempHum(float *t, float *h) {
+  if (!tempHumSensor.startMeasurementReady(true)) return true;
+  *t = tempHumSensor.getTemperature_C();
+  *h = tempHumSensor.getHumidity_RH();
+  return false;
+}
+
+
+//--- SD CARD ---//
+
+void initSD() {
   while (!SD.begin(SDCARD_SS_PIN)) {
     error("SD card initialization failed.");
     delay(RETRY_DELAY);
@@ -43,43 +101,6 @@ void setup() {
   }
 }
 
-void loop() {
-  if (!tempHumSensor.startMeasurementReady(true)) return;
-
-  log(
-    String(pressureSensor.getAirPressure()) +
-    ", " +
-    String(tempHumSensor.getTemperature_C()) +
-    ", " +
-    String(tempHumSensor.getHumidity_RH())
-  );
-}
-
-
-//--- PRESSURE SENSOR ---//
-
-void initPressure() {
-  while (pressureSensor.begin() != 0) {
-    error("Pressure sensor initialization failed.");
-    delay(RETRY_DELAY);
-  }
-
-  pressureSensor.setWorkPattern(pressureSensor.eNormal);
-  info("Pressure sensor initialized.");
-}
-
-
-//--- TEMPERATURE & HUMIDITY SENSOR ---//
-
-void initTempHum() {
-  uint8_t status;
-  while ((status = tempHumSensor.begin()) != 0) {
-    error("Temperature/humidity sensor initialization failed (status: " + String(status) + ").");
-    delay(RETRY_DELAY);
-  }
-  info("Temperature/humidity sensor initialized.");  
-}
-
 
 //--- LOGGING FUNCTIONS ---//
 
@@ -87,8 +108,8 @@ void log(String s) {
   File log = SD.open(LOG_FILE, FILE_WRITE);
   if (log) {
 #if SERIAL_LOG_LEVEL > 1
-    Serial.println("LOG :: ")
-    Serial.print(s);
+    Serial.print("LOG :: ");
+    Serial.println(s);
 #endif
     log.print(millis());
     log.print(" :: ");
