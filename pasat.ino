@@ -53,6 +53,8 @@ void loop() {
 void initDistance() {
   pinMode(triggerPin, OUTPUT);
   pinMode(echoPin, INPUT);
+
+  info("Ultrasonic distance sensor initialized.");
 }
 
 bool readDistance(float *d) {
