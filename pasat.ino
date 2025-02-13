@@ -12,6 +12,10 @@
 
 int statusPin = LED_BUILTIN;
 
+// ultrasonic distance sensor
+int triggerPin = 4;
+int echoPin = 5;
+
 DFRobot_ICP10111 pressureSensor;
 DFRobot_AHT20 tempHumSensor;
 
@@ -25,18 +29,43 @@ void setup() {
   pinMode(statusPin, OUTPUT);
 
   initPressure();
+  initDistance();
   initSD();  
 }
 
 void loop() {
-  float pressure, temp;
-  if (readPressure(&pressure) || readTemp(&temp)) return;
+  float pressure, temp, distance;
+  if (readPressure(&pressure) || readTemp(&temp) || readDistance(&distance)) return;
 
   log(
     String(pressure) +
     ", " +
-    String(temp)
+    String(temp) +
+    ", " +
+    String(distance)
   );
+}
+
+
+//--- ULTRASONIC DISTANCE SENSOR ---//
+
+void initDistance() {
+  pinMode(triggerPin, OUTPUT);
+  pinMode(echoPin, INPUT);
+}
+
+bool readDistance(float *d) {
+  digitalWrite(triggerPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(triggerPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(triggerPin, LOW);
+
+  float duration = pulseIn(echoPin, HIGH);
+  float distance = duration * 0.0001458;
+
+  *d = distance;
+  return false;
 }
 
 
