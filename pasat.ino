@@ -4,17 +4,18 @@
 #include <DFRobot_ICP10111.h>
 #include <DFRobot_AHT20.h>
 
-#define LOG_FILE "log.txt"
-#define RETRY_DELAY 1000
-
 // 0->don't log to serial | 1->log only info & errors | 2->log all
 #define SERIAL_LOG_LEVEL 2
 
-int statusPin = LED_BUILTIN;
+const String logFile = "log.txt";
+const int retryDelay = 1000;
+
+// LED status indicator
+const int statusPin = LED_BUILTIN;
 
 // ultrasonic distance sensor
-int triggerPin = 4;
-int echoPin = 5;
+const int triggerPin = 4;
+const int echoPin = 5;
 
 DFRobot_ICP10111 pressureSensor;
 DFRobot_AHT20 tempHumSensor;
@@ -75,7 +76,7 @@ void initPressure() {
   uint8_t status;
   while ((status = pressureSensor.begin()) != 0) {
     error("Pressure sensor initialization failed (status: " + String(status) + ").");
-    delay(RETRY_DELAY);
+    delay(retryDelay);
   }
 
   pressureSensor.setWorkPattern(pressureSensor.eNormal);
@@ -98,7 +99,7 @@ void initTempHum() {
   uint8_t status;
   while ((status = tempHumSensor.begin()) != 0) {
     error("Temperature/humidity sensor initialization failed (status: " + String(status) + ").");
-    delay(RETRY_DELAY);
+    delay(retryDelay);
   }
 
   info("Temperature/humidity sensor initialized.");  
@@ -117,13 +118,13 @@ bool readTempHum(float *t, float *h) {
 void initSD() {
   while (!SD.begin(SDCARD_SS_PIN)) {
     error("SD card initialization failed.");
-    delay(RETRY_DELAY);
+    delay(retryDelay);
   }
   info("SD card initialized.");
 
   // clear previous logs
-  if (SD.exists(LOG_FILE)) {
-    SD.remove(LOG_FILE);
+  if (SD.exists(logFile)) {
+    SD.remove(logFile);
     info("Cleared previous logs.");
   }
 }
@@ -132,7 +133,7 @@ void initSD() {
 //--- LOGGING FUNCTIONS ---//
 
 void log(String s) {
-  File log = SD.open(LOG_FILE, FILE_WRITE);
+  File log = SD.open(logFile, FILE_WRITE);
   if (log) {
 #if SERIAL_LOG_LEVEL > 1
     Serial.print("LOG :: ");
