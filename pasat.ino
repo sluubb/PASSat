@@ -25,23 +25,17 @@ void setup() {
   pinMode(statusPin, OUTPUT);
 
   initPressure();
-  initTempHum();
   initSD();  
 }
 
 void loop() {
-  float pressure;
-  if (readPressure(&pressure)) return;
-
-  float temp, hum;
-  if (readTempHum(&temp, &hum)) return;
+  float pressure, temp;
+  if (readPressure(&pressure) || readTemp(&temp)) return;
 
   log(
     String(pressure) +
     ", " +
-    String(temp) +
-    ", " +
-    String(hum)
+    String(temp)
   );
 }
 
@@ -64,9 +58,13 @@ bool readPressure(float *p) {
   return false;
 }
 
+bool readTemp(float *t) {
+  *t = pressureSensor.getTemperature();
+  return false;
+}
 
 //--- TEMPERATURE & HUMIDITY SENSOR ---//
-
+/*
 void initTempHum() {
   uint8_t status;
   while ((status = tempHumSensor.begin()) != 0) {
@@ -83,7 +81,7 @@ bool readTempHum(float *t, float *h) {
   *h = tempHumSensor.getHumidity_RH();
   return false;
 }
-
+*/
 
 //--- SD CARD ---//
 
