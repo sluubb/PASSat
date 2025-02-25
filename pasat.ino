@@ -17,6 +17,10 @@ const int statusPin = LED_BUILTIN;
 const int triggerPin = 4;
 const int echoPin = 5;
 
+// stepper motor
+const int motorPins[] = {0, 1, 2, 3};
+int currentPin = 0;
+
 DFRobot_ICP10111 pressureSensor;
 DFRobot_AHT20 tempHumSensor;
 
@@ -45,6 +49,42 @@ void loop() {
     ", " +
     String(distance)
   );
+}
+
+
+//--- STEPPER MOTOR ---//
+
+void initMotor() {
+  for (int i = 0; i < 4; i++) {
+    pinMode(motorPins[i], OUTPUT);
+    digitalWrite(motorPins[i], LOW);
+  }
+}
+
+void stepMotor(int numSteps, int stepDelay) {
+  int step = 1;
+  if (numSteps < 0) {
+    step = -1;
+    numSteps *= -1;
+  }
+
+  for (int i = 0; i < numSteps; i += step) {
+    digitalWrite(motorPins[currentPin], LOW);
+
+    currentPin += step;
+    if (currentPin > 3) currentPin -= 4;
+    else if (currentPin < 0) currentPin += 4;
+
+    digitalWrite(motorPins[currentPin], HIGH);
+    delay(stepDelay);
+  }
+}
+
+void releaseLegs() {
+  stepMotor(4, 100);
+  delay(500);
+  stepMotor(-4, 100);
+  digitalWrite(motorPins[currentPin], LOW);
 }
 
 
