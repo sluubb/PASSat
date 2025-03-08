@@ -1,8 +1,10 @@
 #include <SPI.h>
 #include <SD.h>
-
 #include <DFRobot_ICP10111.h>
-#include <DFRobot_AHT20.h>
+#include <TinyGPS++.h>
+#include <RadioLib.h>
+//#include <DFRobot_AHT20.h>
+//#include <AccelStepper.h>
 
 // 0->don't log to serial | 1->log only info & errors | 2->log all
 #define SERIAL_LOG_LEVEL 2
@@ -14,82 +16,238 @@ const int retryDelay = 1000;
 const int statusPin = LED_BUILTIN;
 
 // ultrasonic distance sensor
-const int triggerPin = 4;
-const int echoPin = 5;
+//const int triggerPin = 4;
+//const int echoPin = 5;
 
 // stepper motor
-const int motorPins[] = {0, 1, 2, 3};
-int currentPin = 0;
+//AccelStepper stepper(AccelStepper::FULL4WIRE, 0, 2, 1, 3, true);
+
+// leg release mechanism
+//const int timeThreshold = 1000;
+//const float altitudeThreshold = 100.0;
+//int timerStart = -1;
+//bool hasLeftGround = true;
+//bool legsReleased = false;
+
+// GPS module
+TinyGPSPlus gpsParser;
+
+// LoRa module
+const float radioFrequency = 434.0; // MHz
+const float radioBandwidth = 125.0; // kHz
+SX1278 radio = new Module(15, 17, 16, 18);
+int transmissionState = RADIOLIB_ERR_NONE;
+volatile bool packetSentFlag = false;
 
 DFRobot_ICP10111 pressureSensor;
-DFRobot_AHT20 tempHumSensor;
+//DFRobot_AHT20 tempHumSensor;
+
+bool hasShouted = false;
 
 void setup() {
 #if SERIAL_LOG_LEVEL > 0
-  // initialize serial logging
   Serial.begin(9600);
   while (!Serial);
 #endif
 
   pinMode(statusPin, OUTPUT);
 
+  initSD();
+  initLoRa();
   initPressure();
-  initDistance();
-  initSD();  
+  initGPS();
 }
 
 void loop() {
-  float pressure, temp, distance;
-  if (readPressure(&pressure) || readTemp(&temp) || readDistance(&distance)) return;
+  updateGPS();
 
-  log(
-    String(pressure) +
-    ", " +
-    String(temp) +
-    ", " +
-    String(distance)
-  );
+  float pressure, elevation, temperature;
+  double latitude, longitude, altitudeGPS, course, speed;
+
+  String logStr;
+  if (readPressure(&pressure)) logStr += String(pressure) + ", "; else logStr += ", ";
+  if (readTemperature(&temperature)) logStr += String(temperature) + ", "; else logStr += ", ";
+  if (readElevation(&elevation)) logStr += String(elevation) + ", "; else logStr += ", ";
+  if (readGPSLocation(&latitude, &longitude)) logStr += String(latitude, 6) + ", " + String(longitude, 6) + ", ";
+  else logStr += ", , ";
+  if (readGPSAltitude(&altitudeGPS)) logStr += String(altitudeGPS) + ", "; else logStr += ", ";
+  if (readGPSCourse(&course)) logStr += String(course) + ", "; else logStr += ", ";
+  if (readGPSSpeed(&speed)) logStr += String(speed);
+
+  log(logStr);
+
+  // send data through LoRa radio to ground station
+  if (packetSentFlag) {
+    packetSentFlag = false;
+
+    if (transmissionState != RADIOLIB_ERR_NONE) {
+      error("Radio transmission failed (code: " + String(transmissionState) + ").");
+    }
+
+    radio.finishTransmit();
+
+    if (!hasShouted && elevation > 500) {
+      hasShouted = true;
+      logStr += ", msg: You all look so small from up here!";
+    }
+
+    transmissionState = radio.startTransmit(logStr);
+  }
+
+  // we have left ground if altitude has been above threshold for long enough
+  /*if (!hasLeftGround && alt > altitudeThreshold) {
+    if (timerStart < 0) {
+      timerStart = millis();
+    } else if (millis() - timerStart > timeThreshold) {
+      hasLeftGround = true;
+    }
+  } else if (!hasLeftGround) {
+    timerStart = -1;
+  }
+
+  // release legs if altitude has indicated being near ground for long enough (and previously left ground)
+  if (!legsReleased && hasLeftGround && alt < altitudeThreshold) {
+    if (timerStart < 0) {
+      timerStart = millis();
+    } else if (millis() - timerStart > timeThreshold) {
+      releaseLegs();
+    }
+  } else if (!legsReleased && hasLeftGround) {
+    timerStart = -1;
+  }*/
+}
+
+
+//--- GPS MODULE ---//
+
+void initGPS() {
+  Serial1.begin(9600);
+  info("GPS module initialized.");
+}
+
+void updateGPS() {
+  while (Serial1.available() > 0) {
+    char packet = Serial1.read();
+    gpsParser.encode(packet);
+    //Serial.print(packet);
+  }
+}
+
+bool readGPSLocation(double *lat, double *lng) {
+  if (!gpsParser.location.isValid()) return false;
+
+  *lat = gpsParser.location.lat();
+  *lng = gpsParser.location.lng();
+  return true;
+}
+
+bool readGPSAltitude(double *alt) {
+  if (!gpsParser.altitude.isValid()) return false;
+
+  *alt = gpsParser.altitude.meters();
+  return true;
+}
+
+bool readGPSCourse(double *crs) {
+  if (!gpsParser.course.isValid()) return false;
+
+  *crs = gpsParser.course.deg();
+  return true;
+}
+
+bool readGPSSpeed(double *spd) {
+  if (!gpsParser.speed.isValid()) return false;
+
+  *spd = gpsParser.speed.mps();
+  return true;
+}
+
+
+//--- LORA MODULE ---//
+
+void onPacketSent(void) {
+  packetSentFlag = true;
+}
+
+void initLoRa() {
+  int state;
+  while ((state = radio.begin(radioFrequency, radioBandwidth)) != RADIOLIB_ERR_NONE) {
+    error("LoRa module initialization failed (code: " + String(state) + ").");
+    delay(retryDelay);
+  }
+
+  radio.setPacketSentAction(onPacketSent);
+
+  info("LoRa module initialized.");
+
+  transmissionState = radio.startTransmit("Transmission has begun.");
+}
+
+
+//--- PRESSURE SENSOR ---//
+
+void initPressure() {
+  uint8_t status;
+  while ((status = pressureSensor.begin()) != 0) {
+    error("Pressure sensor initialization failed (status: " + String(status) + ").");
+    delay(retryDelay);
+  }
+
+  pressureSensor.setWorkPattern(pressureSensor.eNormal);
+  info("Pressure sensor initialized.");
+}
+
+bool readPressure(float *p) {
+  *p = pressureSensor.getAirPressure();
+  return true;
+}
+
+bool readElevation(float *alt) {
+  *alt = pressureSensor.getElevation();
+  return true;
+}
+
+bool readTemperature(float *t) {
+  *t = pressureSensor.getTemperature();
+  return true;
+}
+
+
+//--- SD CARD ---//
+
+void initSD() {
+  while (!SD.begin(SDCARD_SS_PIN)) {
+    error("SD card initialization failed.");
+    delay(retryDelay);
+  }
+  info("SD card initialized.");
+
+  // clear previous logs
+  if (SD.exists(logFile)) {
+    SD.remove(logFile);
+    info("Cleared previous logs.");
+  }
 }
 
 
 //--- STEPPER MOTOR ---//
-
-void initMotor() {
-  for (int i = 0; i < 4; i++) {
-    pinMode(motorPins[i], OUTPUT);
-    digitalWrite(motorPins[i], LOW);
-  }
-}
-
-void stepMotor(int numSteps, int stepDelay) {
-  int step = 1;
-  if (numSteps < 0) {
-    step = -1;
-    numSteps *= -1;
-  }
-
-  for (int i = 0; i < numSteps; i += step) {
-    digitalWrite(motorPins[currentPin], LOW);
-
-    currentPin += step;
-    if (currentPin > 3) currentPin -= 4;
-    else if (currentPin < 0) currentPin += 4;
-
-    digitalWrite(motorPins[currentPin], HIGH);
-    delay(stepDelay);
-  }
-}
-
+/*
 void releaseLegs() {
-  stepMotor(4, 100);
-  delay(500);
-  stepMotor(-4, 100);
-  digitalWrite(motorPins[currentPin], LOW);
-}
+  legsReleased = true;
 
+  log("Releasing legs...");
+
+  stepper.setMaxSpeed(1000);
+  stepper.setAcceleration(1000);
+  stepper.runToNewPosition(200);
+  stepper.disableOutputs();
+
+  log("Legs released.");
+}
+*/
 
 //--- ULTRASONIC DISTANCE SENSOR ---//
-
+/*
 void initDistance() {
   pinMode(triggerPin, OUTPUT);
   pinMode(echoPin, INPUT);
@@ -110,30 +268,7 @@ bool readDistance(float *d) {
   *d = distance;
   return false;
 }
-
-
-//--- PRESSURE SENSOR ---//
-
-void initPressure() {
-  uint8_t status;
-  while ((status = pressureSensor.begin()) != 0) {
-    error("Pressure sensor initialization failed (status: " + String(status) + ").");
-    delay(retryDelay);
-  }
-
-  pressureSensor.setWorkPattern(pressureSensor.eNormal);
-  info("Pressure sensor initialized.");
-}
-
-bool readPressure(float *p) {
-  *p = pressureSensor.getAirPressure();
-  return false;
-}
-
-bool readTemp(float *t) {
-  *t = pressureSensor.getTemperature();
-  return false;
-}
+*/
 
 //--- TEMPERATURE & HUMIDITY SENSOR ---//
 /*
@@ -155,23 +290,6 @@ bool readTempHum(float *t, float *h) {
 }
 */
 
-//--- SD CARD ---//
-
-void initSD() {
-  while (!SD.begin(SDCARD_SS_PIN)) {
-    error("SD card initialization failed.");
-    delay(retryDelay);
-  }
-  info("SD card initialized.");
-
-  // clear previous logs
-  if (SD.exists(logFile)) {
-    SD.remove(logFile);
-    info("Cleared previous logs.");
-  }
-}
-
-
 //--- LOGGING FUNCTIONS ---//
 
 void log(String s) {
@@ -182,7 +300,7 @@ void log(String s) {
     Serial.println(s);
 #endif
     log.print(millis());
-    log.print(" :: ");
+    log.print(", ");
     log.println(s);
     log.close();
   } else {
@@ -192,7 +310,11 @@ void log(String s) {
 
 void error(String s) {
   digitalWrite(statusPin, HIGH);
-  delay(100);
+  delay(40);
+  digitalWrite(statusPin, LOW);
+  delay(120);
+  digitalWrite(statusPin, HIGH);
+  delay(40);
   digitalWrite(statusPin, LOW);
 
 #if SERIAL_LOG_LEVEL > 0
