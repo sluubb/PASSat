@@ -9,7 +9,7 @@
 // 0->don't log to serial | 1->log only info & errors | 2->log all
 #define SERIAL_LOG_LEVEL 2
 
-const String logFile = "log.txt";
+const String logFile = "log.csv";
 const int retryDelay = 1000;
 
 // LED status indicator
@@ -64,14 +64,14 @@ void loop() {
   float pressure, elevation, temperature;
   double latitude, longitude, altitudeGPS, course, speed;
 
-  String logStr;
-  if (readPressure(&pressure)) logStr += String(pressure) + ", "; else logStr += ", ";
-  if (readTemperature(&temperature)) logStr += String(temperature) + ", "; else logStr += ", ";
-  if (readElevation(&elevation)) logStr += String(elevation) + ", "; else logStr += ", ";
-  if (readGPSLocation(&latitude, &longitude)) logStr += String(latitude, 6) + ", " + String(longitude, 6) + ", ";
-  else logStr += ", , ";
-  if (readGPSAltitude(&altitudeGPS)) logStr += String(altitudeGPS) + ", "; else logStr += ", ";
-  if (readGPSCourse(&course)) logStr += String(course) + ", "; else logStr += ", ";
+  String logStr = String(millis()) + ",";
+  if (readPressure(&pressure)) logStr += String(pressure) + ","; else logStr += ",";
+  if (readTemperature(&temperature)) logStr += String(temperature) + ","; else logStr += ",";
+  if (readElevation(&elevation)) logStr += String(elevation) + ","; else logStr += ",";
+  if (readGPSLocation(&latitude, &longitude)) logStr += String(latitude, 6) + "," + String(longitude, 6) + ",";
+  else logStr += ",,";
+  if (readGPSAltitude(&altitudeGPS)) logStr += String(altitudeGPS) + ","; else logStr += ",";
+  if (readGPSCourse(&course)) logStr += String(course) + ","; else logStr += ",";
   if (readGPSSpeed(&speed)) logStr += String(speed);
 
   log(logStr);
@@ -299,8 +299,6 @@ void log(String s) {
     Serial.print("LOG :: ");
     Serial.println(s);
 #endif
-    log.print(millis());
-    log.print(", ");
     log.println(s);
     log.close();
   } else {
